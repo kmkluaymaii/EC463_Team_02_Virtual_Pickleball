@@ -1,0 +1,3 @@
+[submodule "game/unreal-pickle-royale"]
+	path = game/unreal-pickle-royale
+	url = https://github.com/Pipcy/unreal-pickle-royale.git
