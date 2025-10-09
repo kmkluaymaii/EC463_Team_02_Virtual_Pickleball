@@ -1,11 +1,11 @@
-# 02-Team Repo
-Template for team repo
+# 02-Pickleball Team Repo
+
 
 <p align="center">
 <img src="./images/thisismyteam.png" width="100%">
 </p>
 <p align="center">
-This is my team
+Our team
 </p>
 
 ## Project Description
@@ -18,9 +18,5 @@ This project proposes the development of an interactive pickleball paddle traini
 - [ECE Senior Design Piazza Site](https://piazza.com/bu/fall2025/ec463/home)
 - [Blackboard](http://learn.bu.edu/)
 
-
 ## Optional features links
-- Team Jira
-- Team Confluence
-- Something else
-
+- [Team Notion](https://www.notion.so/pippipi/26b9779f5bf0802d9af2ecf8ab3f78fd?v=26b9779f5bf08051bb3e000c7211909c&source=copy_link)
