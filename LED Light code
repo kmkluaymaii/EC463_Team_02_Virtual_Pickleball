@@ -1,0 +1,80 @@
+#include <Arduino.h>
+#include <FastLED.h>
+
+// ---------- CONFIGURATION ----------
+#define LED_PIN      15          // GP15 → strip DIN
+#define NUM_LEDS     30          // adjust for your strip length
+#define BRIGHTNESS   180
+#define LED_TYPE     WS2812B
+#define COLOR_ORDER  GRB         // change to RGB if colors look wrong
+// -----------------------------------
+
+CRGB leds[NUM_LEDS];
+
+void showColor(const CRGB &c) {
+  fill_solid(leds, NUM_LEDS, c);
+  FastLED.show();
+}
+
+void flashColor(const CRGB &c, uint8_t flashes = 3, uint16_t intervalMs = 200) {
+  for (uint8_t i = 0; i < flashes; i++) {
+    showColor(c);
+    delay(intervalMs);
+    showColor(CRGB::Black);
+    delay(intervalMs);
+  }
+}
+
+// Pink ↔ Purple rotation effect
+void pinkPurpleRotate(uint8_t segLen = 3, uint8_t waitMs = 60, uint16_t loops = 200) {
+  CRGB pink   = CRGB(255, 64, 160);
+  CRGB purple = CRGB(128, 0, 200);
+  uint16_t offset = 0;
+
+  for (uint16_t l = 0; l < loops; l++) {
+    for (int i = 0; i < NUM_LEDS; i++) {
+      int idx = (i + offset) / segLen;
+      leds[i] = (idx % 2 == 0) ? pink : purple;
+    }
+    FastLED.show();
+    offset = (offset + 1) % (segLen * 2);
+    delay(waitMs);
+  }
+  showColor(CRGB::Black);
+}
+
+// Rainbow effect
+void rainbowCycle(uint8_t waitMs = 10, uint8_t cycles = 3) {
+  for (uint16_t j = 0; j < 256 * cycles; j++) {
+    for (int i = 0; i < NUM_LEDS; i++) {
+      leds[i] = CHSV((i * 256 / NUM_LEDS + j) & 255, 255, BRIGHTNESS);
+    }
+    FastLED.show();
+    delay(waitMs);
+  }
+  showColor(CRGB::Black);
+}
+
+void setup() {
+  FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
+  FastLED.setBrightness(BRIGHTNESS);
+  FastLED.clear(true);
+}
+
+void loop() {
+  // WIN → green flash
+  flashColor(CRGB::Green, 3, 200);
+  delay(500);
+
+  // LOSS → red flash
+  flashColor(CRGB::Red, 3, 200);
+  delay(500);
+
+  // PINK/PURPLE rotation
+  pinkPurpleRotate(3, 60, 200);
+  delay(500);
+
+  // RAINBOW animation
+  rainbowCycle(10, 3);
+  delay(500);
+}
