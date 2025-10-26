@@ -1,0 +1,167 @@
+// ESP32 + WS2812/NeoPixel LED strip quick-start
+// Library: Adafruit NeoPixel by Adafruit
+// Arduino IDE: Tools → Board → ESP32 Arduino → ESP32 Dev Module (or your ESP32)
+// Wire: 5V to strip 5V, GND to strip GND (shared with ESP32),
+//       DATA on LED_PIN through a ~330Ω resistor to DIN. Add a 1000µF cap across 5V↔GND at the strip.
+// NOTE: ESP32 is 3.3V logic; most strips work, but a 5V->3.3V level shifter (e.g., 74AHCT125) is recommended for reliability.
+
+#include <Adafruit_NeoPixel.h>
+
+// ====== USER CONFIG ======
+#define LED_PIN     5       // ESP32 GPIO connected to LED DIN (use GPIO 5 by default)
+#define LED_COUNT   60      // Number of LEDs in your strip
+#define BRIGHTNESS  64      // 0-255. Start modest to avoid blinding current draws
+// Most WS2812B are GRB @ 800kHz. Change if your strip differs (e.g., NEO_RGB, NEO_GBR)
+#define LED_ORDER   NEO_GRB
+#define LED_FREQ    NEO_KHZ800
+// =========================
+
+Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, LED_ORDER + LED_FREQ);
+
+// ---- Helpers ----
+static inline void fillColor(uint32_t c) {
+  for (uint16_t i = 0; i < LED_COUNT; i++) strip.setPixelColor(i, c);
+  strip.show();
+}
+
+void setBrightnessSafe(uint8_t b) {
+  strip.setBrightness(b); // Will apply on next show(); keep an eye on current draw
+  strip.show();
+}
+
+// ---- Extra Utilities ----
+uint32_t rgb(uint8_t r, uint8_t g, uint8_t b) { return strip.Color(r, g, b); }
+
+void clearLeds() {
+  fillColor(strip.Color(0,0,0));
+}
+
+void setColorAll(uint8_t r, uint8_t g, uint8_t b) {
+  fillColor(rgb(r,g,b));
+}
+
+void colorWipe(uint32_t c, uint16_t wait_ms = 20) {
+  for (uint16_t i = 0; i < LED_COUNT; i++) {
+    strip.setPixelColor(i, c);
+    strip.show();
+    delay(wait_ms);
+  }
+}
+
+void blinkColor(uint32_t c, uint8_t times = 3, uint16_t on_ms = 150, uint16_t off_ms = 150) {
+  for (uint8_t t = 0; t < times; t++) {
+    fillColor(c); delay(on_ms);
+    clearLeds();  delay(off_ms);
+  }
+}
+
+void theaterChase(uint32_t c, uint8_t cycles = 10, uint16_t wait_ms = 50) {
+  for (uint8_t j = 0; j < cycles; j++) {
+    for (uint8_t q = 0; q < 3; q++) {
+      for (uint16_t i = 0; i < LED_COUNT; i += 3) strip.setPixelColor(i + q, c);
+      strip.show(); delay(wait_ms);
+      for (uint16_t i = 0; i < LED_COUNT; i += 3) strip.setPixelColor(i + q, 0);
+    }
+  }
+}
+
+uint32_t Wheel(byte WheelPos) {
+  WheelPos = 255 - WheelPos;
+  if(WheelPos < 85)       return strip.Color(255 - WheelPos * 3, 0, WheelPos * 3);
+  else if(WheelPos < 170) { WheelPos -= 85; return strip.Color(0, WheelPos * 3, 255 - WheelPos * 3); }
+  else { WheelPos -= 170; return strip.Color(WheelPos * 3, 255 - WheelPos * 3, 0); }
+}
+
+void rainbow(uint8_t cycles = 1, uint16_t wait_ms = 10) {
+  for (uint16_t j = 0; j < 256 * cycles; j++) {
+    for (uint16_t i = 0; i < LED_COUNT; i++) {
+      strip.setPixelColor(i, Wheel((i + j) & 255));
+    }
+    strip.show();
+    delay(wait_ms);
+  }
+}
+
+void progressBar(float fraction, uint32_t c = 0, uint32_t bg = 0) {
+  fraction = constrain(fraction, 0.0f, 1.0f);
+  uint16_t lit = (uint16_t)roundf(fraction * LED_COUNT);
+  for (uint16_t i = 0; i < LED_COUNT; i++) strip.setPixelColor(i, (i < lit) ? c : bg);
+  strip.show();
+}
+
+// ---- State color APIs you can call anywhere ----
+void setWin() {              // green for win
+  fillColor(strip.Color(0, 255, 0));
+}
+
+void setConnected() {        // blue for connected/neutral
+  fillColor(strip.Color(0, 0, 255));
+}
+
+void setLoss() {             // red for loss
+  fillColor(strip.Color(255, 0, 0));
+}
+
+void setNoConnection() {     // yellow for no connection / disconnected
+  fillColor(strip.Color(255, 255, 0));
+}
+
+// ---- Animated State Variants (call when state changes) ----
+void celebrateWin(uint8_t flashes = 3) { // green flash + theater chase
+  blinkColor(rgb(0,255,0), flashes, 120, 80);
+  theaterChase(rgb(0,255,0), 12, 30);
+  setWin();
+}
+
+void connectedBreath(uint8_t cycles = 2, uint8_t minB = 10, uint8_t maxB = 120, uint8_t step = 3, uint16_t hold_ms = 8) {
+  // Temporarily animate brightness while holding blue
+  uint8_t prev = BRIGHTNESS;
+  for (uint8_t c = 0; c < cycles; c++) {
+    for (int b = minB; b <= maxB; b += step) { setConnected(); strip.setBrightness(b); strip.show(); delay(hold_ms); }
+    for (int b = maxB; b >= minB; b -= step) { setConnected(); strip.setBrightness(b); strip.show(); delay(hold_ms); }
+  }
+  strip.setBrightness(prev); setConnected(); strip.show();
+}
+
+void alertLoss(uint8_t pulses = 6) { // urgent red pulse
+  for (uint8_t i = 0; i < pulses; i++) {
+    blinkColor(rgb(255,0,0), 1, 90, 90);
+  }
+  setLoss();
+}
+
+void searchingConnection(uint8_t rounds = 2, uint16_t speed_ms = 12) { // yellow wipe scanning
+  for (uint8_t r = 0; r < rounds; r++) {
+    colorWipe(rgb(255,255,0), speed_ms);
+    colorWipe(0, speed_ms);
+  }
+  setNoConnection();
+}
+
+// Optional: a quick demo cycle you can remove later
+void demoCycle(uint16_t hold_ms = 1200) {
+  setConnected();   delay(hold_ms);
+  setWin();         delay(hold_ms);
+  setLoss();        delay(hold_ms);
+  setNoConnection();delay(hold_ms);
+  // extras
+  celebrateWin();
+  connectedBreath();
+  alertLoss();
+  searchingConnection();
+  rainbow(1, 8);
+}
+
+void setup() {
+
+  strip.begin();
+  strip.setBrightness(BRIGHTNESS);
+  strip.show(); // Initialize all pixels to 'off'
+
+  // Run once so you see it works; remove after integrating into your project
+  demoCycle();
+}
+
+void loop() {
+  // No-op. In your code, just call setWin(), setConnected(), setLoss(), setNoConnection() when states change.
+}
