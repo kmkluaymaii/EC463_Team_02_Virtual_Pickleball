@@ -1,6 +1,6 @@
 import socket
 
-ESP32_IP = "192.168.0.158"   # Replace with your ESP32 IP
+ESP32_IP = "10.192.27.84"   # Replace with your ESP32 IP
 ESP32_PORT = 4210
 
 # Create UDP socket
