@@ -1,0 +1,156 @@
+#include <WiFi.h>
+#include <WiFiUdp.h>
+#include <FastLED.h>
+
+// ================= WIFI CONFIG =================
+const char* WIFI_SSID = "BU Guest (unencrypted)";  // Open network (no password)
+const uint16_t UDP_PORT = 4210;                   // Unreal / Python sends here
+
+WiFiUDP udp;
+char incomingPacket[256];
+// =================================================
+
+// ================ LED CONFIG =====================
+#define LED_PIN      3          // Data pin for LED strip
+#define NUM_LEDS     10         // Change to match your strip
+#define BRIGHTNESS   120
+#define LED_TYPE     WS2812B
+#define COLOR_ORDER  GRB
+
+CRGB leds[NUM_LEDS];
+// =================================================
+
+// ------------- LED Helpers -----------------
+void showColor(const CRGB &c) {
+  fill_solid(leds, NUM_LEDS, c);
+  FastLED.show();
+}
+
+void showOff() {
+  showColor(CRGB::Black);
+}
+
+// Blue breathing for connected
+void ledsConnected() {
+  for (uint8_t b = 40; b <= BRIGHTNESS; b += 4) {
+    FastLED.setBrightness(b);
+    showColor(CRGB::Blue);
+    delay(15);
+  }
+  for (int b = BRIGHTNESS; b >= 40; b -= 4) {
+    FastLED.setBrightness(b);
+    showColor(CRGB::Blue);
+    delay(15);
+  }
+  FastLED.setBrightness(BRIGHTNESS);
+}
+
+// Yellow flashing for connecting
+void ledsConnecting() {
+  for (int i = 0; i < 6; i++) {
+    showColor(CRGB::Yellow);
+    delay(120);
+    showOff();
+    delay(120);
+  }
+  showColor(CRGB::Yellow);
+}
+
+// Solid green for win
+void ledsWin() {
+  FastLED.setBrightness(BRIGHTNESS);
+  showColor(CRGB::Green);
+}
+
+// Solid red for loss
+void ledsLoss() {
+  FastLED.setBrightness(BRIGHTNESS);
+  showColor(CRGB::Red);
+}
+
+// Neutral state = solid blue
+void ledsNeutral() {
+  FastLED.setBrightness(BRIGHTNESS);
+  showColor(CRGB::Blue);
+}
+// ------------------------------------------
+
+// ------------- COMMAND HANDLER ------------
+void handleCommand(const String &raw) {
+  String cmd = raw;
+  cmd.trim();
+  cmd.toUpperCase();
+
+  Serial.print("Received UDP cmd: ");
+  Serial.println(cmd);
+
+  if (cmd == "CONNECTED") {
+    ledsConnected();
+  } else if (cmd == "CONNECTING") {
+    ledsConnecting();
+  } else if (cmd == "WIN") {
+    ledsWin();
+  } else if (cmd == "LOSS") {
+    ledsLoss();
+  } else if (cmd == "NEUTRAL") {
+    ledsNeutral();
+  } else if (cmd == "OFF") {
+    showOff();
+  } else {
+    Serial.println("Unknown command");
+  }
+}
+// ------------------------------------------
+
+// ------------- WiFi Connect ---------------
+void connectWiFi() {
+  Serial.print("Connecting to WiFi: ");
+  Serial.println(WIFI_SSID);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID);   // open network, no password
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nWiFi connected!");
+  Serial.print("ESP32 IP address: ");
+  Serial.println(WiFi.localIP());
+}
+// ------------------------------------------
+
+// =================== SETUP =================
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+
+  // LEDs
+  FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS);
+  FastLED.setBrightness(BRIGHTNESS);
+  showOff();
+
+  // WiFi
+  connectWiFi();
+
+  // UDP
+  udp.begin(UDP_PORT);
+  Serial.print("Listening for UDP on port ");
+  Serial.println(UDP_PORT);
+}
+// ==========================================
+
+// =================== LOOP =================
+void loop() {
+  int packetSize = udp.parsePacket();
+  if (packetSize > 0) {
+    int len = udp.read(incomingPacket, sizeof(incomingPacket) - 1);
+    if (len < 0) return;
+    incomingPacket[len] = '\0';
+
+    handleCommand(String(incomingPacket));
+  }
+
+  delay(5);
+}
