@@ -4,8 +4,9 @@
 #include <Adafruit_DRV2605.h>
 
 // ==== WiFi Configuration ====
-const char* ssid = "cc";
-const char* password = "crinklecoffee";
+
+const char* ssid = 
+const char* password = 
 
 // ==== UDP Target (your PC) ====
 const char* udpAddress = "10.193.8.32";
