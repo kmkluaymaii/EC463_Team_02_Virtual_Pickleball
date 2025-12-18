@@ -1,10 +1,12 @@
 #include <Wire.h>
 #include <Adafruit_BNO055.h>
+#include <Adafruit_Sensor.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <Adafruit_DRV2605.h>
 #include <driver/i2s_std.h>
 #include <FastLED.h>
+#include <utility/imumaths.h>
 
 // =========================
 // WIFI CONFIG
@@ -17,6 +19,9 @@ const char* password = "";
 // =========================
 WiFiUDP udp;
 const int UDP_PORT = 4210;
+
+const char* udpAddress = "10.192.13.150";
+const int REMOTE_PORT = 5005;
 
 // =========================
 // I2S AUDIO OUTPUT (SPEAKER)
@@ -63,7 +68,7 @@ bool devicePresent(uint8_t addr) {
 // =========================
 // I2S SETUP (NEW DRIVER)
 // =========================
-void setupI2S() {
+void setupI2S(){
   i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
   i2s_new_channel(&chan_cfg, &tx_handle, NULL);
 
@@ -142,6 +147,7 @@ int getIntParam(String msg, int index) {
   }
   return msg.substring(start).toInt();
 }
+
 String getStringParam(String msg, int index) {
   int start = 0, count = 0;
   for (int i = 0; i < msg.length(); i++) {
@@ -154,11 +160,13 @@ String getStringParam(String msg, int index) {
   return msg.substring(start);
 }
 
+
 // =========================
 // BNO055 IMU SETUP
 // =========================
 TwoWire I2C_2 = TwoWire(1);
 Adafruit_BNO055 bno(55, BNO055_ADDRESS_B, &I2C_2);
+uint16_t BNO055_SAMPLERATE_DELAY_MS = 100;
 
 // =========================
 // SETUP
@@ -212,6 +220,7 @@ void setup() {
     while (1) { delay(500); Serial.println("Check wiring or address!"); }
   }
   Serial.println("BNO055 detected!");
+
 }
 
 // =========================
@@ -219,9 +228,24 @@ void setup() {
 // =========================
 void loop() {
   // ===== BNO055 READ =====
-  sensors_event_t event;
-  bno.getEvent(&event);
-  Serial.printf("IMU X: %.2f Y: %.2f Z: %.2f\n", event.orientation.x, event.orientation.y, event.orientation.z);
+  sensors_event_t orientationData, angVelocityData, linearAccelData;
+  bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
+  bno.getEvent(&angVelocityData, Adafruit_BNO055::VECTOR_GYROSCOPE);
+  bno.getEvent(&linearAccelData, Adafruit_BNO055::VECTOR_LINEARACCEL);
+    
+  // Format as CSV string for easy parsing
+  String imuPacket = "";
+  imuPacket += String(orientationData.orientation.x, 2) + ",";
+  imuPacket += String(orientationData.orientation.y, 2) + ",";
+  imuPacket += String(orientationData.orientation.z, 2) + ";";
+
+  // Send over UDP
+  udp.beginPacket(udpAddress, REMOTE_PORT);
+  udp.print(imuPacket);
+  udp.endPacket();
+
+  delay(BNO055_SAMPLERATE_DELAY_MS);
+
 
   // ===== AUDIO =====
   if (beepActive) {
@@ -233,60 +257,61 @@ void loop() {
 
   // ===== UDP PACKET HANDLING =====
   int packetSize = udp.parsePacket();
-  if (!packetSize) return;
+  // if (!packetSize) return;
+  if (packetSize > 0){
+    char packet[255];
+    int len = udp.read(packet, sizeof(packet) - 1);
+    if (len <= 0) return;
+    packet[len] = 0;
+    String msg = String(packet);
+    Serial.print("Received packet: "); Serial.println(msg);
 
-  char packet[255];
-  int len = udp.read(packet, sizeof(packet) - 1);
-  if (len <= 0) return;
-  packet[len] = 0;
-  String msg = String(packet);
-  Serial.print("📩 Received packet: "); Serial.println(msg);
+    if (msg.startsWith("beep:")) {
+      int c1 = msg.indexOf(':'), c2 = msg.indexOf(':', c1 + 1);
+      int freq = msg.substring(c1 + 1, c2).toInt();
+      int duration = msg.substring(c2 + 1).toInt();
+      Serial.printf("Beep %d Hz, %d ms\n", freq, duration);
+      playBeep(freq, duration);
+      // return;
+    }
 
-  if (msg.startsWith("beep:")) {
-    int c1 = msg.indexOf(':'), c2 = msg.indexOf(':', c1 + 1);
-    int freq = msg.substring(c1 + 1, c2).toInt();
-    int duration = msg.substring(c2 + 1).toInt();
-    Serial.printf("🔊 Beep %d Hz, %d ms\n", freq, duration);
-    playBeep(freq, duration);
-    return;
+    if (msg.startsWith("haptic:")) {
+      int c1 = msg.indexOf(':'), c2 = msg.indexOf(':', c1 + 1);
+      int channel = msg.substring(c1 + 1, c2).toInt();
+      int effect = msg.substring(c2 + 1).toInt();
+      Serial.printf("Haptic ch=%d effect=%d\n", channel, effect);
+      tcaSelect(channel);
+      drv.setWaveform(0, effect);
+      drv.setWaveform(1, 0);
+      drv.go();
+      // return;
+    }
+
+    if (msg.startsWith("combo:")) {
+      int c1 = msg.indexOf(':'), c2 = msg.indexOf(':', c1 + 1), c3 = msg.indexOf(':', c2 + 1);
+      int c4 = msg.indexOf(':', c3 + 1), c5 = msg.indexOf(':', c4 + 1);
+      int freq = msg.substring(c1 + 1, c2).toInt();
+      int duration = msg.substring(c2 + 1, c3).toInt();
+      int channel = msg.substring(c3 + 1, c4).toInt();
+      int effect = msg.substring(c4 + 1, c5).toInt();
+      String color = msg.substring(c5 + 1);
+      Serial.printf("COMBO beep %d Hz %d ms + haptic ch=%d eff=%d\n", freq, duration, channel, effect);
+      tcaSelect(channel);
+      drv.setWaveform(0, effect);
+      drv.setWaveform(1, 0);
+      drv.go();
+      playBeep(freq, duration);
+      changeLedColor(color);
+      // return;
+    }
+
+    if (msg.startsWith("led:")) {
+      String color = msg.substring(4);
+      Serial.printf("LED color: %s\n", color.c_str());
+      changeLedColor(color);
+      // return;
+    }
+
+    Serial.println("Unknown command.");
   }
-
-  if (msg.startsWith("haptic:")) {
-    int c1 = msg.indexOf(':'), c2 = msg.indexOf(':', c1 + 1);
-    int channel = msg.substring(c1 + 1, c2).toInt();
-    int effect = msg.substring(c2 + 1).toInt();
-    Serial.printf("🔔 Haptic ch=%d effect=%d\n", channel, effect);
-    tcaSelect(channel);
-    drv.setWaveform(0, effect);
-    drv.setWaveform(1, 0);
-    drv.go();
-    return;
-  }
-
-  if (msg.startsWith("combo:")) {
-    int c1 = msg.indexOf(':'), c2 = msg.indexOf(':', c1 + 1), c3 = msg.indexOf(':', c2 + 1);
-    int c4 = msg.indexOf(':', c3 + 1), c5 = msg.indexOf(':', c4 + 1);
-    int freq = msg.substring(c1 + 1, c2).toInt();
-    int duration = msg.substring(c2 + 1, c3).toInt();
-    int channel = msg.substring(c3 + 1, c4).toInt();
-    int effect = msg.substring(c4 + 1, c5).toInt();
-    String color = msg.substring(c5 + 1);
-    Serial.printf("💥 COMBO beep %d Hz %d ms + haptic ch=%d eff=%d\n", freq, duration, channel, effect);
-    tcaSelect(channel);
-    drv.setWaveform(0, effect);
-    drv.setWaveform(1, 0);
-    drv.go();
-    playBeep(freq, duration);
-    changeLedColor(color);
-    return;
-  }
-
-  if (msg.startsWith("led:")) {
-    String color = msg.substring(4);
-    Serial.printf("💡 LED color: %s\n", color.c_str());
-    changeLedColor(color);
-    return;
-  }
-
-  Serial.println("⚠️ Unknown command.");
 }
