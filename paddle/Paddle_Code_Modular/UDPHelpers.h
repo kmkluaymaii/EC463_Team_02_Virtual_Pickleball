@@ -38,12 +38,18 @@ void processUDPCommands() {
     int effect = msg.substring(c4 + 1, c5).toInt();
     String color = msg.substring(c5 + 1);
 
-    tcaSelect(channel);
-    drv.setWaveform(0, effect);
-    drv.setWaveform(1, 0);
-    drv.go();
+    if (hapticsReady) {
+      tcaSelect(channel);
+      drv.setWaveform(0, effect);
+      drv.setWaveform(1, 0);
+      drv.go();
+    } else {
+      Serial.println("Haptics not ready - skipping drv commands");
+    }
 
     playBeep(freq, duration);
-    changeLedColor(color);
+    // changeLedColor(color);
+    //displayHitColorAnim();
+    displayHitFlashDecayAnim();
   }
 }

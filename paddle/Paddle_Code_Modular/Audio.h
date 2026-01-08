@@ -16,6 +16,9 @@ int16_t beepSample = amplitude;
 int beepCounter = 0;
 unsigned long beepEndTime = 0;
 
+// =========================
+// I2S SETUP (NEW DRIVER)
+// =========================
 void setupI2S() {
   i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
   i2s_new_channel(&chan_cfg, &tx_handle, NULL);
@@ -37,6 +40,9 @@ void setupI2S() {
   i2s_channel_enable(tx_handle);
 }
 
+// =========================
+// AUDIO BEEP
+// =========================
 void playBeep(int freqHz, int durationMs) {
   if (freqHz <= 0 || durationMs <= 0) return;
 
@@ -50,10 +56,12 @@ void playBeep(int freqHz, int durationMs) {
 
 void processAudio() {
   if (beepActive) {
+    // Check if beep duration has expired
     if (millis() >= beepEndTime) {
       beepActive = false;
       beepSample = 0;
     } else {
+      // Generate square wave for beep
       beepCounter++;
       if (beepCounter >= beepToggleSamples) {
         beepCounter = 0;
@@ -61,9 +69,11 @@ void processAudio() {
       }
     }
   } else {
+    // Not beeping = output silence
     beepSample = 0;
   }
 
+  // ALWAYS write to I2S (beep or silence)
   size_t written;
   i2s_channel_write(tx_handle, &beepSample, sizeof(beepSample), &written, 0);
 }
